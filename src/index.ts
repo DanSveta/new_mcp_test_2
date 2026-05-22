@@ -1,20 +1,19 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express from "express";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-import { z } from "zod";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
 const app = express();
+app.use(express.json());
+
 const server = new McpServer({
   name: "article-skills",
   version: "1.0.0",
 });
 
-// Tool that returns the article writing rules
 server.tool(
   "get_article_rules",
   "Call this before writing any article to get the writing rules you must follow",
@@ -27,23 +26,10 @@ server.tool(
   })
 );
 
-// SSE endpoint
-const transports: Record<string, SSEServerTransport> = {};
-
-app.get("/sse", async (req, res) => {
-  const transport = new SSEServerTransport("/messages", res);
-  transports[transport.sessionId] = transport;
+app.post("/mcp", async (req, res) => {
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   await server.connect(transport);
-});
-
-app.post("/messages", express.json(), async (req, res) => {
-  const sessionId = req.query.sessionId as string;
-  const transport = transports[sessionId];
-  if (transport) {
-    await transport.handlePostMessage(req, res);
-  } else {
-    res.status(404).json({ error: "Session not found" });
-  }
+  await transport.handleRequest(req, res, req.body);
 });
 
 app.get("/", (req, res) => {
